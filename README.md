@@ -48,6 +48,33 @@ python3 -m venv .venv
 .venv/bin/explabs --env-file /absolute/path/to/.env
 ```
 
+## 模型目录与价格
+
+```sh
+# 默认精选列表，最多 12 个；按参考成本从低到高展示
+python3 -m explabs models --env-file .env
+
+# 全部目录，包含别名和 :free 变体
+python3 -m explabs models --env-file .env --all
+
+# 搜索不受默认精选名单限制
+python3 -m explabs models --env-file .env --search claude --sort price
+
+# 支持工具、至少 128k 上下文、参考成本不超过 $2
+python3 -m explabs models --env-file .env --capability tools --min-context 128000 --max-cost 2 --sort price
+
+# 厂商过滤、大上下文优先；输出精确 JSON
+python3 -m explabs models --env-file .env --maker openai --sort context --limit 10 --json
+```
+
+**默认筛选规则**：以 key 可见的 `/api/v1/models` 为目录，与 `/api/models?sort=preferred&limit=100` 的前 100 个候选交叉核对；只选择明确有 `preferred_rank` 的纯文本输出且支持工具的模型，排除别名、`latest`、冒号变体，以及图像、嵌入、语音、decisions、uncensored、guard 等专用条目。按平台优先级选取，每家最多两个，总计最多 12 个，再按参考成本从低到高显示。平台当前优先项通常包括新一代模型，但这里不保证最新，也不宣称实测能力排行。优先元数据获取失败时明确提示，可用 `--all` 查看可见目录。
+
+**价格口径**：输入、输出、缓存读取均为 USD / 百万 tokens。`/api/v1/models` 的 `pricing.prompt/completion/input_cache_read` 是兼容格式的 USD/token 字符串，乘 1,000,000 后展示；这与 `/api/models` 下 provider 的 nano-USD/百万 tokens 字段不同，不能混用。已用真实模型的两套接口交叉核对换算。
+
+**参考成本 REF** = 100 万输入 + 25 万输出，不含缓存、促销、套餐折扣、长上下文阶梯和额外费用。它用于统一比较基础 token 报价，不是账单预测；非纯文本输出不计算该参考值。按参考成本分为 `budget`（≤$2）、`balanced`（≤$8）、`premium`（>$8），这些是预算档位，不是能力评级。未知价格显示 `?`，按价格排序时排最后；设置价格上限时排除未知价格。零值保留，不会当作缺失。
+
+指定搜索、厂商、能力、预算、上下文过滤或显式的非默认排序时，使用**整个可见目录**，不受默认精选、每家两个限制，保留变体。`--all` 同样展示整个目录。`--limit` 仅限制展示数量；JSON 提供可见总数与展示数。`--maker` 指模型厂商，不是实际服务路由商。目录价格与存在性不代表当前账户一定能推理，仍需满足余额、验证、地区和路由要求。
+
 ## 读数含义与额度边界
 
 | 内容 | 当前实现 |
@@ -91,7 +118,8 @@ python3 -m explabs --help
 - `explabs/config.py`：dotenv 读取。
 - `explabs/service.py`：分页、金额精确汇总、报告结构；portal 应在服务端调用。
 - `explabs/cli.py`：参数与表格/JSON 展示。
+- `explabs/catalog.py`：模型目录、价格换算、精选与筛选。
 
 测试覆盖分页与截断、金额精度、重复记录、失败请求计费、未知价格、权限降级、dotenv、错误脱敏和传输约束。CI 在 Python 3.11、3.13、3.15 上运行；不会使用真实账户密钥。
 
-首次交付尚未取得本地 `.env` 路径，因此账户余额、实际用量与 key 额度的真实凭据验证仍待完成。已执行无效 key 的线上只读鉴权检查，但这不能证明真实账户的接口兼容性。
+已通过本地 `.env` 做真实凭据的只读验证：用量、余额、key 额度及模型目录均可读取。验证未发起推理，不证明各模型的推理可用性；账户返回值和密钥不进入仓库。
